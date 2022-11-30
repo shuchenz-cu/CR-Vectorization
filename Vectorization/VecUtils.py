@@ -49,12 +49,16 @@ class ImgVectorize:
         return my_embedding.squeeze().numpy()
 
     def get_vec(self):
-        
-        def get_image_from_url(self):
-            response = requests.get(self.url)
-            return Image.open(BytesIO(response.content))
+        response = requests.get(self.url, stream=True)
+        if response.status_code == 403:
+            return [[0]]
+        else:
+            try:
+                img = Image.open(response.raw)
+                return self.extract_feature_vector(img).reshape(1, -1)
+            except:
+                return "invalid image link"
 
-        return self.extract_feature_vector(get_image_from_url(self)).reshape(1, -1)
 
 
 
@@ -64,8 +68,8 @@ class TextVectorize:
 
     # OPTIONAL: if you want to have more information on what's happening, activate the logger as follows
     import logging
-    # logging.basicConfig(level=logging.INFO)
-    logging.set_verbosity_error()
+    #logging.basicConfig(level=logging.INFO)
+    #logging.set_verbosity_error()
 
     import matplotlib.pyplot as plt
     # % matplotlib inline
@@ -80,25 +84,42 @@ class TextVectorize:
         from transformers import BertTokenizer, BertModel
         #1.Tokenize the sequence:
         tokens=self.tokenizer.tokenize(self.str)
-        # print(tokens)
+        #print(len(tokens)) #new
+        #print(tokens)
 
         tokens = ['[CLS]'] + tokens + ['[SEP]']
-        # print(" Tokens are \n {} ".format(tokens))
+        #print(tokens) #new
+        #print(" Tokens are \n {} ".format(tokens))
+        
 
-        T=15
-        padded_tokens=tokens +['[PAD]' for _ in range(T-len(tokens))]
-        # print("Padded tokens are \n {} ".format(padded_tokens))
-        attn_mask=[ 1 if token != '[PAD]' else 0 for token in padded_tokens  ]
-        # print("Attention Mask are \n {} ".format(attn_mask))
+        T=150 #T=15 #untuk mengoreksi jumlah kata kalo terlalu sedikit
+        padded_tokens=tokens +['[PAD]' for _ in range(T-len(tokens))] #ditambah remark PAD untuk token2 akhir
+        #print("Padded tokens are \n {} ".format(padded_tokens))
+        
+        #NEW ADDING THE [SEP]
+        padded_tokens=['[SEP]' if token == '/' else token for token in padded_tokens] #new
+        #print("Add SEP are \n {} ".format(padded_tokens))
+        
+        #attn_mask=[ 1 if token != '[PAD]' else 0 for token in padded_tokens] #input mask,  ditandanin yg ada word dengan 1, emark PAD dikasih 0
+        attn_mask=[ 1 if token != '[PAD]' and token !='[SEP]' else 0 for token in padded_tokens] #new
+        #print("Attention Mask are \n {} ".format(attn_mask))
 
-        seg_ids=[0 for _ in range(len(padded_tokens))]
-        # print("Segment Tokens are \n {}".format(seg_ids))
+        #seg_ids=[0 for _ in range(len(padded_tokens))] # semua token dikasin nilai 0, untuk separator?
+        seg_ids=[1 if token =='[SEP]' else 0 for token in padded_tokens] # new
+        #print("Segment Tokens are \n {}".format(seg_ids))
 
-        sent_ids=self.tokenizer.convert_tokens_to_ids(padded_tokens)
-        # print("senetence idexes \n {} ".format(sent_ids))
-        token_ids = torch.tensor(sent_ids).unsqueeze(0) 
+        sent_ids=self.tokenizer.convert_tokens_to_ids(padded_tokens) #tiap token dikasih unique id, CLS 101, SEP 102
+        #print("senetence idexes \n {} ".format(sent_ids))
+        
+        # DI bawah ini intinya dijaddin formatnya torch tensor
+        token_ids = torch.tensor(sent_ids).unsqueeze(0)
+        #print("token idexes \n {} ".format(token_ids)) #new
         attn_mask = torch.tensor(attn_mask).unsqueeze(0) 
+        #print("attn mask \n {} ".format(attn_mask)) #new
         seg_ids   = torch.tensor(seg_ids).unsqueeze(0)
+        #print("seg ids \n {} ".format(seg_ids)) #new
+        
+        
 
         model = BertModel.from_pretrained('bert-base-uncased',
                                         output_hidden_states = True, # Whether the model returns all hidden-states.
